@@ -3,7 +3,8 @@ namespace RdpSwitcher;
 internal sealed class PauseDoublePressDetector
 {
     private const long DuplicatePressWindowMilliseconds = 80;
-    private const long DoublePressWindowMilliseconds = 700;
+    // Pause x2 is accepted when the second press arrives within this window.
+    private const long DoublePressWindowMilliseconds = 1600;
 
     private long _lastObservedPressTick = -1;
     private long _lastPressTick = -1;

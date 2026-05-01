@@ -1,6 +1,9 @@
 #include <windows.h>
 #include <tsvirtualchannels.h>
 
+#include <cstdio>
+#include <cstring>
+#include <cwchar>
 #include <new>
 
 namespace
@@ -18,12 +21,192 @@ namespace
 
     long g_objectCount = 0;
     long g_lockCount = 0;
+    CRITICAL_SECTION g_pipeLock;
+    HANDLE g_pipe = INVALID_HANDLE_VALUE;
+
+    void WritePluginLog(const wchar_t* message)
+    {
+        if (message == nullptr || message[0] == L'\0')
+        {
+            return;
+        }
+
+        wchar_t localAppData[MAX_PATH] = {};
+        const DWORD localAppDataLength = GetEnvironmentVariableW(
+            L"LOCALAPPDATA",
+            localAppData,
+            ARRAYSIZE(localAppData));
+        if (localAppDataLength == 0 || localAppDataLength >= ARRAYSIZE(localAppData))
+        {
+            return;
+        }
+
+        wchar_t logDirectory[MAX_PATH] = {};
+        if (swprintf_s(logDirectory, L"%s\\RdpSwitcher", localAppData) < 0)
+        {
+            return;
+        }
+
+        CreateDirectoryW(logDirectory, nullptr);
+
+        SYSTEMTIME now = {};
+        GetLocalTime(&now);
+
+        wchar_t logPath[MAX_PATH] = {};
+        if (swprintf_s(
+            logPath,
+            L"%s\\RdpSwitcher.Plugin-%04u-%02u-%02u.log",
+            logDirectory,
+            now.wYear,
+            now.wMonth,
+            now.wDay) < 0)
+        {
+            return;
+        }
+
+        const HANDLE file = CreateFileW(
+            logPath,
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+
+        wchar_t line[1024] = {};
+        if (swprintf_s(
+            line,
+            L"%04u-%02u-%02u %02u:%02u:%02u.%03u %s\r\n",
+            now.wYear,
+            now.wMonth,
+            now.wDay,
+            now.wHour,
+            now.wMinute,
+            now.wSecond,
+            now.wMilliseconds,
+            message) >= 0)
+        {
+            char utf8Line[4096] = {};
+            const int bytes = WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                line,
+                -1,
+                utf8Line,
+                ARRAYSIZE(utf8Line),
+                nullptr,
+                nullptr);
+            if (bytes > 1)
+            {
+                DWORD written = 0;
+                WriteFile(file, utf8Line, static_cast<DWORD>(bytes - 1), &written, nullptr);
+            }
+        }
+
+        CloseHandle(file);
+    }
 
     void Trace(const wchar_t* message)
     {
         OutputDebugStringW(L"RdpSwitcher.Plugin: ");
         OutputDebugStringW(message);
         OutputDebugStringW(L"\n");
+        WritePluginLog(message);
+    }
+
+    void TraceWin32(const wchar_t* message, DWORD error)
+    {
+        wchar_t buffer[256] = {};
+        swprintf_s(buffer, L"%s. Win32Error=%lu", message, error);
+        Trace(buffer);
+    }
+
+    HANDLE OpenHostPipeWithRetry()
+    {
+        constexpr DWORD kTimeoutMs = 2000;
+        constexpr DWORD kRetryDelayMs = 50;
+
+        const DWORD started = GetTickCount();
+        DWORD lastError = ERROR_SUCCESS;
+
+        while (GetTickCount() - started <= kTimeoutMs)
+        {
+            HANDLE pipe = CreateFileW(
+                kPipeName,
+                GENERIC_WRITE,
+                0,
+                nullptr,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+
+            if (pipe != INVALID_HANDLE_VALUE)
+            {
+                return pipe;
+            }
+
+            lastError = GetLastError();
+            if (lastError == ERROR_PIPE_BUSY)
+            {
+                WaitNamedPipeW(kPipeName, kRetryDelayMs);
+            }
+            else if (lastError != ERROR_FILE_NOT_FOUND && lastError != ERROR_PATH_NOT_FOUND)
+            {
+                TraceWin32(L"host named pipe open failed", lastError);
+                return INVALID_HANDLE_VALUE;
+            }
+
+            Sleep(kRetryDelayMs);
+        }
+
+        TraceWin32(L"host named pipe is not available", lastError);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    void CloseHostPipeNoLock()
+    {
+        if (g_pipe == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+
+        CloseHandle(g_pipe);
+        g_pipe = INVALID_HANDLE_VALUE;
+    }
+
+    bool EnsureHostPipeNoLock()
+    {
+        if (g_pipe != INVALID_HANDLE_VALUE)
+        {
+            return true;
+        }
+
+        g_pipe = OpenHostPipeWithRetry();
+        return g_pipe != INVALID_HANDLE_VALUE;
+    }
+
+    bool WriteHostPipeNoLock(const BYTE* buffer, ULONG size)
+    {
+        if (!EnsureHostPipeNoLock())
+        {
+            return false;
+        }
+
+        DWORD written = 0;
+        const BOOL ok = WriteFile(g_pipe, buffer, size, &written, nullptr);
+
+        if (!ok || written != size)
+        {
+            TraceWin32(L"failed to write DVC payload to host named pipe", GetLastError());
+            CloseHostPipeNoLock();
+            return false;
+        }
+
+        return true;
     }
 
     bool ForwardToHostPipe(const BYTE* buffer, ULONG size)
@@ -33,55 +216,110 @@ namespace
             return false;
         }
 
-        HANDLE pipe = CreateFileW(
-            kPipeName,
-            GENERIC_WRITE,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
+        EnterCriticalSection(&g_pipeLock);
+        bool forwarded = WriteHostPipeNoLock(buffer, size);
+        if (!forwarded)
+        {
+            forwarded = WriteHostPipeNoLock(buffer, size);
+        }
+
+        LeaveCriticalSection(&g_pipeLock);
+
+        if (!forwarded)
+        {
+            return false;
+        }
+
+        Trace(L"DVC payload forwarded to host named pipe");
+        return true;
+    }
+
+    bool TryExtractNonce(const BYTE* buffer, ULONG size, char* nonce, size_t nonceSize)
+    {
+        if (buffer == nullptr || nonce == nullptr || nonceSize == 0)
+        {
+            return false;
+        }
+
+        constexpr char kMarker[] = "nonce=";
+        constexpr size_t kMarkerLength = sizeof(kMarker) - 1;
+
+        for (ULONG index = 0; index + kMarkerLength <= size; index++)
+        {
+            if (memcmp(buffer + index, kMarker, kMarkerLength) != 0)
+            {
+                continue;
+            }
+
+            size_t outputIndex = 0;
+            index += static_cast<ULONG>(kMarkerLength);
+            while (index < size && outputIndex < nonceSize - 1)
+            {
+                const char value = static_cast<char>(buffer[index]);
+                if (value == '\r' || value == '\n' || value == '\0')
+                {
+                    break;
+                }
+
+                nonce[outputIndex++] = value;
+                index++;
+            }
+
+            nonce[outputIndex] = '\0';
+            return outputIndex > 0;
+        }
+
+        return false;
+    }
+
+    void SendAck(IWTSVirtualChannel* channel, const BYTE* buffer, ULONG size, bool forwarded)
+    {
+        if (channel == nullptr)
+        {
+            return;
+        }
+
+        char nonce[64] = {};
+        if (!TryExtractNonce(buffer, size, nonce, sizeof(nonce)))
+        {
+            strcpy_s(nonce, "missing");
+        }
+
+        char ack[192] = {};
+        sprintf_s(
+            ack,
+            "ack=pause-double-press\nstatus=%s\nnonce=%s",
+            forwarded ? "forwarded" : "pipe-failed",
+            nonce);
+
+        const HRESULT hr = channel->Write(
+            static_cast<ULONG>(strlen(ack)),
+            reinterpret_cast<BYTE*>(ack),
             nullptr);
 
-        if (pipe == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PIPE_BUSY)
+        if (FAILED(hr))
         {
-            if (WaitNamedPipeW(kPipeName, 500))
-            {
-                pipe = CreateFileW(
-                    kPipeName,
-                    GENERIC_WRITE,
-                    0,
-                    nullptr,
-                    OPEN_EXISTING,
-                    FILE_ATTRIBUTE_NORMAL,
-                    nullptr);
-            }
+            wchar_t message[128] = {};
+            swprintf_s(message, L"failed to write DVC ACK. HRESULT=0x%08X", static_cast<unsigned int>(hr));
+            Trace(message);
+            return;
         }
 
-        if (pipe == INVALID_HANDLE_VALUE)
-        {
-            Trace(L"host named pipe is not available");
-            return false;
-        }
-
-        DWORD written = 0;
-        const BOOL ok = WriteFile(pipe, buffer, size, &written, nullptr);
-        FlushFileBuffers(pipe);
-        CloseHandle(pipe);
-
-        if (!ok || written != size)
-        {
-            Trace(L"failed to write DVC payload to host named pipe");
-            return false;
-        }
-
-        return true;
+        wchar_t message[128] = {};
+        swprintf_s(message, L"DVC ACK sent. Status=%s", forwarded ? L"forwarded" : L"pipe-failed");
+        Trace(message);
     }
 
     class ChannelCallback final : public IWTSVirtualChannelCallback
     {
     public:
-        ChannelCallback()
+        explicit ChannelCallback(IWTSVirtualChannel* channel) : _channel(channel)
         {
+            if (_channel != nullptr)
+            {
+                _channel->AddRef();
+            }
+
             InterlockedIncrement(&g_objectCount);
         }
 
@@ -124,7 +362,12 @@ namespace
 
         HRESULT STDMETHODCALLTYPE OnDataReceived(ULONG cbSize, BYTE* pBuffer) override
         {
-            ForwardToHostPipe(pBuffer, cbSize);
+            wchar_t message[128] = {};
+            swprintf_s(message, L"DVC data received. Bytes=%lu", cbSize);
+            Trace(message);
+
+            const bool forwarded = ForwardToHostPipe(pBuffer, cbSize);
+            SendAck(_channel, pBuffer, cbSize, forwarded);
             return S_OK;
         }
 
@@ -136,10 +379,17 @@ namespace
     private:
         ~ChannelCallback()
         {
+            if (_channel != nullptr)
+            {
+                _channel->Release();
+                _channel = nullptr;
+            }
+
             InterlockedDecrement(&g_objectCount);
         }
 
         long _refCount = 1;
+        IWTSVirtualChannel* _channel = nullptr;
     };
 
     class RdpSwitcherPlugin final : public IWTSPlugin, public IWTSListenerCallback
@@ -201,6 +451,10 @@ namespace
                 return E_POINTER;
             }
 
+            wchar_t message[128] = {};
+            swprintf_s(message, L"Initialize called. ProcessId=%lu", GetCurrentProcessId());
+            Trace(message);
+
             IWTSListener* listener = nullptr;
             const HRESULT hr = channelManager->CreateListener(
                 kChannelName,
@@ -241,7 +495,7 @@ namespace
         }
 
         HRESULT STDMETHODCALLTYPE OnNewChannelConnection(
-            IWTSVirtualChannel*,
+            IWTSVirtualChannel* channel,
             BSTR,
             BOOL* accept,
             IWTSVirtualChannelCallback** callback) override
@@ -251,7 +505,7 @@ namespace
                 return E_POINTER;
             }
 
-            auto channelCallback = new (std::nothrow) ChannelCallback();
+            auto channelCallback = new (std::nothrow) ChannelCallback(channel);
             if (channelCallback == nullptr)
             {
                 *accept = FALSE;
@@ -382,7 +636,15 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
+        InitializeCriticalSection(&g_pipeLock);
         DisableThreadLibraryCalls(module);
+    }
+    else if (reason == DLL_PROCESS_DETACH)
+    {
+        EnterCriticalSection(&g_pipeLock);
+        CloseHostPipeNoLock();
+        LeaveCriticalSection(&g_pipeLock);
+        DeleteCriticalSection(&g_pipeLock);
     }
 
     return TRUE;

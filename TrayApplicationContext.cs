@@ -88,6 +88,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _pipeSignalServer?.Dispose();
         _rawKeyboardInputWindow?.Dispose();
+        DvcSignalSender.Close();
+
         if (!_isRemoteSession)
         {
             RdcAddInRegistration.DisableForCurrentUser();
@@ -127,7 +129,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         if (DvcSignalSender.TrySend(out var error))
         {
-            AppLog.Write($"Sent DVC signal. Channel={DvcChannel.Name}");
+            AppLog.Write($"Sent DVC signal and received host ACK. Channel={DvcChannel.Name}");
             return;
         }
 

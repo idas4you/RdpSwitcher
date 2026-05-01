@@ -137,6 +137,19 @@ internal static class NativeMethods
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSVirtualChannelRead(
+        IntPtr channelHandle,
+        uint timeOut,
+        byte[] buffer,
+        uint bufferSize,
+        out uint bytesRead);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSVirtualChannelPurgeInput(IntPtr channelHandle);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool WTSVirtualChannelClose(IntPtr channelHandle);
 
     [DllImport("kernel32.dll", SetLastError = true)]

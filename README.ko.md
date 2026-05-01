@@ -2,6 +2,8 @@
 
 [English README](README.md)
 
+[Code signing policy](CODE_SIGNING_POLICY.md)
+
 RdpSwitcher는 Pause 키를 두 번 눌러 원격 데스크톱 세션과 호스트 데스크톱 사이를 전환하는 작은 Windows 트레이 유틸리티입니다.
 
 호스트 PC와 원격 Windows 세션 양쪽에 같은 프로그램을 설치하고 실행합니다.

@@ -2,6 +2,8 @@
 
 [한국어 README](README.ko.md)
 
+[Code signing policy](CODE_SIGNING_POLICY.md)
+
 RdpSwitcher is a small Windows tray utility for switching between Remote Desktop sessions and the host desktop with a double press of the Pause key.
 
 Install and run the same app on both the host PC and the remote Windows session.

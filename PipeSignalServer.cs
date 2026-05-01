@@ -8,17 +8,28 @@ namespace RdpSwitcher;
 internal sealed class PipeSignalServer : IDisposable
 {
     private const int MaxPayloadBytes = 8192;
+    private const int ListenerCount = 4;
 
     private readonly CancellationTokenSource _cancellation = new();
     private readonly SynchronizationContext? _synchronizationContext = SynchronizationContext.Current;
-    private Task? _listenTask;
+    private readonly List<Task> _listenTasks = [];
     private bool _disposed;
 
     public event EventHandler<PipeSignalEventArgs>? SignalReceived;
 
     public void Start()
     {
-        _listenTask ??= Task.Run(() => ListenAsync(_cancellation.Token));
+        if (_listenTasks.Count > 0)
+        {
+            return;
+        }
+
+        AppLog.Write($"Named pipe server starting. Pipe={IpcEndpoint.PipeName}, Listeners={ListenerCount}");
+        for (var listenerIndex = 1; listenerIndex <= ListenerCount; listenerIndex++)
+        {
+            var capturedIndex = listenerIndex;
+            _listenTasks.Add(Task.Run(() => ListenAsync(capturedIndex, _cancellation.Token)));
+        }
     }
 
     public void Dispose()
@@ -29,29 +40,41 @@ internal sealed class PipeSignalServer : IDisposable
         }
 
         _cancellation.Cancel();
+        WaitForListenersToStop();
         _cancellation.Dispose();
         _disposed = true;
     }
 
-    private async Task ListenAsync(CancellationToken cancellationToken)
+    private async Task ListenAsync(int listenerIndex, CancellationToken cancellationToken)
     {
-        AppLog.Write($"Named pipe server starting. Pipe={IpcEndpoint.PipeName}");
-
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 await using var pipe = CreateServerStream();
                 await pipe.WaitForConnectionAsync(cancellationToken);
-                var payload = await ReadPayloadAsync(pipe, cancellationToken);
+                pipe.ReadMode = PipeTransmissionMode.Message;
+                AppLog.Write($"Named pipe client connected. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
 
-                if (!IsValidPayload(payload))
+                while (pipe.IsConnected && !cancellationToken.IsCancellationRequested)
                 {
-                    AppLog.Write($"Rejected named pipe payload. Pipe={IpcEndpoint.PipeName}, Payload={payload.ReplaceLineEndings(" | ")}");
-                    continue;
+                    var payload = await ReadPayloadAsync(pipe, cancellationToken);
+                    if (payload is null)
+                    {
+                        break;
+                    }
+
+                    if (!IsValidPayload(payload))
+                    {
+                        AppLog.Write($"Rejected named pipe payload. Pipe={IpcEndpoint.PipeName}, Payload={payload.ReplaceLineEndings(" | ")}");
+                        continue;
+                    }
+
+                    AppLog.Write($"Named pipe payload accepted. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}, Bytes={Encoding.UTF8.GetByteCount(payload)}");
+                    PostSignal(payload);
                 }
 
-                PostSignal(payload);
+                AppLog.Write($"Named pipe client disconnected. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -59,12 +82,12 @@ internal sealed class PipeSignalServer : IDisposable
             }
             catch (Exception ex)
             {
-                AppLog.Write($"Named pipe server error. Pipe={IpcEndpoint.PipeName}, Error={ex}");
+                AppLog.Write($"Named pipe server error. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}, Error={ex}");
                 await DelayAfterErrorAsync(cancellationToken);
             }
         }
 
-        AppLog.Write($"Named pipe server stopped. Pipe={IpcEndpoint.PipeName}");
+        AppLog.Write($"Named pipe listener stopped. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
     }
 
     private static NamedPipeServerStream CreateServerStream()
@@ -72,8 +95,8 @@ internal sealed class PipeSignalServer : IDisposable
         return NamedPipeServerStreamAcl.Create(
             IpcEndpoint.PipeName,
             PipeDirection.In,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
+            maxNumberOfServerInstances: ListenerCount,
+            PipeTransmissionMode.Message,
             PipeOptions.Asynchronous,
             inBufferSize: MaxPayloadBytes,
             outBufferSize: 0,
@@ -102,7 +125,7 @@ internal sealed class PipeSignalServer : IDisposable
                 AccessControlType.Allow));
     }
 
-    private static async Task<string> ReadPayloadAsync(Stream stream, CancellationToken cancellationToken)
+    private static async Task<string?> ReadPayloadAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
     {
         var buffer = new byte[1024];
         using var memory = new MemoryStream();
@@ -112,10 +135,14 @@ internal sealed class PipeSignalServer : IDisposable
             var bytesRead = await stream.ReadAsync(buffer, cancellationToken);
             if (bytesRead == 0)
             {
-                break;
+                return memory.Length == 0 ? null : Encoding.UTF8.GetString(memory.ToArray());
             }
 
             memory.Write(buffer, 0, bytesRead);
+            if (stream.IsMessageComplete)
+            {
+                break;
+            }
         }
 
         if (memory.Length > MaxPayloadBytes)
@@ -142,6 +169,22 @@ internal sealed class PipeSignalServer : IDisposable
             await Task.Delay(1000, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void WaitForListenersToStop()
+    {
+        if (_listenTasks.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Task.WaitAll(_listenTasks.ToArray(), TimeSpan.FromSeconds(1));
+        }
+        catch
         {
         }
     }

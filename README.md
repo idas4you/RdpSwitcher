@@ -33,7 +33,7 @@ HKCU\Software\Classes\CLSID\{8A1E8AC0-827E-42F8-8B65-8D65C7A6AB7D}\InprocServer3
 
 This per-user COM registration does not require administrator rights. RdpSwitcher does not unregister COM on exit; only the RDC AddIn key is removed.
 
-The protected install location check is controlled by `RequireTrustedInstallLocation` in `ComPluginRegistration`. Its default value is `false` until Authenticode signing or another DLL trust validation policy is ready. During development, COM registration can run from non-`Program Files` paths as long as `RdpSwitcher.Plugin.dll` exists next to `RdpSwitcher.exe`.
+The protected install location check is controlled by `RequireTrustedInstallLocation` in `ComPluginRegistration`. Debug builds set it to `false` so local development can run from non-`Program Files` paths. Release builds set it to `true`, so COM registration is allowed only from `Program Files` or `Program Files (x86)`.
 
 Automatic registration only runs when all of these are true:
 

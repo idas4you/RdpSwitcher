@@ -15,10 +15,15 @@ internal static class ComPluginRegistration
     public const string PluginFileName = "RdpSwitcher.Plugin.dll";
     public const string ThreadingModel = "Both";
 
+#if DEBUG
+    // Debug builds allow COM registration outside Program Files so local
+    // development and testing can run from the repository or publish folder.
+    private const bool RequireTrustedInstallLocation = false;
+#else
     // When true, COM registration is allowed only from Program Files locations
     // to reduce the risk of mstsc.exe loading a DLL from a user-writable folder.
-    // Keep false until Authenticode signing or another DLL trust policy is ready.
-    private const bool RequireTrustedInstallLocation = false;
+    private const bool RequireTrustedInstallLocation = true;
+#endif
 
     private const string ClassesClsidRegistryPath = @"Software\Classes\CLSID";
 

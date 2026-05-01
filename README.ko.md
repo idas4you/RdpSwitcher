@@ -33,7 +33,7 @@ HKCU\Software\Classes\CLSID\{8A1E8AC0-827E-42F8-8B65-8D65C7A6AB7D}\InprocServer3
 
 이 현재 사용자 COM 등록은 관리자 권한이 필요하지 않습니다. RdpSwitcher는 종료 시 COM 등록을 해제하지 않고, RDC AddIn 키만 제거합니다.
 
-보호된 설치 위치 검사는 `ComPluginRegistration`의 `RequireTrustedInstallLocation` 값으로 제어합니다. 기본값은 `false`입니다. Authenticode 서명이나 다른 DLL 신뢰성 검증 정책이 준비되기 전까지는 개발 편의를 위해 `Program Files`가 아닌 경로에서도 `RdpSwitcher.Plugin.dll`이 `RdpSwitcher.exe` 옆에 있으면 COM 등록을 허용합니다.
+보호된 설치 위치 검사는 `ComPluginRegistration`의 `RequireTrustedInstallLocation` 값으로 제어합니다. Debug 빌드에서는 로컬 개발을 위해 `false`이고, `Program Files`가 아닌 경로에서도 COM 등록을 허용합니다. Release 빌드에서는 `true`이며, `Program Files` 또는 `Program Files (x86)` 아래에서만 COM 등록을 허용합니다.
 
 자동 등록은 다음 조건을 모두 만족할 때만 실행됩니다.
 

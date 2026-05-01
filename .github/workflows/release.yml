@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "[0-9]*"
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  PROJECT_PATH: RdpSwitcher.csproj
+  PUBLISH_DIR: artifacts/publish
+  MSI_DIR: artifacts/msi
+
+jobs:
+  release:
+    name: Build MSI and publish GitHub release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Read version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^[vV]', ''
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Tag '$tag' is not a valid release tag. Use v1.2.3 or 1.2.3."
+          }
+
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+          "MSI_NAME=RdpSwitcher-$tag-win-x64.msi" >> $env:GITHUB_ENV
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore $env:PROJECT_PATH
+
+      - name: Build RDC plug-in
+        shell: pwsh
+        run: msbuild RdpSwitcher.Plugin/RdpSwitcher.Plugin.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Publish app
+        shell: pwsh
+        run: |
+          dotnet publish $env:PROJECT_PATH `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -o $env:PUBLISH_DIR `
+            /p:PublishSingleFile=true `
+            /p:EnableCompressionInSingleFile=true `
+            /p:DebugType=none `
+            /p:DebugSymbols=false `
+            /p:Version=$env:RELEASE_VERSION `
+            /p:AssemblyVersion=$env:RELEASE_VERSION `
+            /p:FileVersion=$env:RELEASE_VERSION `
+            /p:InformationalVersion="${{ github.ref_name }}"
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 7.0.0
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+
+      - name: Check WiX Toolset
+        run: wix --version
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:MSI_DIR | Out-Null
+          ./build/Build-Msi.ps1 `
+            -PublishDir $env:PUBLISH_DIR `
+            -Version $env:RELEASE_VERSION `
+            -OutputPath "$env:MSI_DIR/$env:MSI_NAME"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RdpSwitcher-${{ github.ref_name }}-win-x64-msi
+          path: artifacts/msi/RdpSwitcher-${{ github.ref_name }}-win-x64.msi
+
+      - name: Create or update GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $msi = "$env:MSI_DIR/$env:MSI_NAME"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $msi --clobber
+          }
+          else {
+            gh release create $tag $msi --title "RdpSwitcher $tag" --generate-notes
+          }

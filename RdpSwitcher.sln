@@ -1,0 +1,44 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11527.330 d18.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RdpSwitcher", "RdpSwitcher.csproj", "{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1} = {E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RdpSwitcher.Plugin", "RdpSwitcher.Plugin\RdpSwitcher.Plugin.vcxproj", "{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Debug|x64.Build.0 = Debug|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Release|x64.ActiveCfg = Release|Any CPU
+		{E8EAE6CD-939B-8889-A8EB-7FCB9F047E10}.Release|x64.Build.0 = Release|Any CPU
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Debug|Any CPU.Build.0 = Debug|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Debug|x64.ActiveCfg = Debug|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Debug|x64.Build.0 = Debug|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Release|Any CPU.ActiveCfg = Release|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Release|Any CPU.Build.0 = Release|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Release|x64.ActiveCfg = Release|x64
+		{E54A4E36-5A0C-4B65-9E1F-A5DA6796D4C1}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CF3F2D43-1BA5-4A08-8859-625A2D47A1E2}
+	EndGlobalSection
+EndGlobal

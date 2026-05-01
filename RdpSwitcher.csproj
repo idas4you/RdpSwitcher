@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\RdpSwitcher.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PluginDllPath>artifacts\plugin\x64\$(Configuration)\RdpSwitcher.Plugin.dll</PluginDllPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(PluginDllPath)')">
+    <Content Include="$(PluginDllPath)" Link="RdpSwitcher.Plugin.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

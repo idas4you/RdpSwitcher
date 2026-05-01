@@ -24,6 +24,7 @@ internal static class NativeMethods
     internal const int RIM_TYPEKEYBOARD = 1;
     internal const int RIDEV_INPUTSINK = 0x00000100;
     internal const int WTS_CURRENT_SESSION = -1;
+    internal const int WTS_CLIENT_PROTOCOL_TYPE = 16;
     internal const int WTS_CHANNEL_OPTION_DYNAMIC = 0x00000001;
 
     internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -137,4 +138,22 @@ internal static class NativeMethods
     [DllImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool WTSVirtualChannelClose(IntPtr channelHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ProcessIdToSessionId(
+        uint processId,
+        out uint sessionId);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSQuerySessionInformation(
+        IntPtr serverHandle,
+        int sessionId,
+        int wtsInfoClass,
+        out IntPtr buffer,
+        out int bytesReturned);
+
+    [DllImport("wtsapi32.dll")]
+    internal static extern void WTSFreeMemory(IntPtr memory);
 }

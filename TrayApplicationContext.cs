@@ -56,11 +56,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
             else
             {
-                AppLog.Write($"COM plug-in registration skipped because this process is running in a remote session. Session={SessionContext.SessionName}");
+                AppLog.Write($"COM plug-in registration skipped because this process is running in a remote session. {SessionContext.Diagnostics}");
             }
 
             _notifyIcon.Visible = true;
-            AppLog.Write($"Started. Role={SessionContext.RoleName}, Session={SessionContext.SessionName}, RawInputKey={RawKeyboardInputWindow.KeyDisplayName}, DvcChannel={DvcChannel.Name}.");
+            AppLog.Write($"Started. {SessionContext.Diagnostics}, RawInputKey={RawKeyboardInputWindow.KeyDisplayName}, DvcChannel={DvcChannel.Name}.");
         }
         catch (Exception ex)
         {

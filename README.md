@@ -111,6 +111,8 @@ dotnet publish RdpSwitcher.csproj `
 
 GitHub Actions builds and uploads an MSI when a release tag is pushed.
 
+The release workflow uses WiX Toolset v7 and passes `-acceptEula wix7` while building the MSI. Make sure you are allowed to accept the WiX v7 OSMF EULA for your use.
+
 Use a three-part numeric tag:
 
 ```powershell
@@ -124,6 +126,14 @@ You can also pass the tag directly:
 ```powershell
 ./build/Push-ReleaseTag.ps1 -Tag v1.0.0
 ```
+
+To delete the most recent local tag and the matching remote tag:
+
+```powershell
+./build/Remove-LatestReleaseTag.ps1
+```
+
+Use `-Force` to skip the confirmation prompt.
 
 ## License
 

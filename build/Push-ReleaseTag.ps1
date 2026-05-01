@@ -12,7 +12,7 @@ Set-StrictMode -Version Latest
 
 function Invoke-Git {
     param(
-        [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+        [Parameter(Mandatory = $true)]
         [string[]]$Arguments
     )
 
@@ -24,7 +24,7 @@ function Invoke-Git {
 
 function Get-GitOutput {
     param(
-        [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+        [Parameter(Mandatory = $true)]
         [string[]]$Arguments
     )
 
@@ -36,7 +36,30 @@ function Get-GitOutput {
     return ($output -join "`n").Trim()
 }
 
+$insideWorkTree = Get-GitOutput -Arguments @("rev-parse", "--is-inside-work-tree")
+if ($insideWorkTree -ne "true") {
+    throw "This script must be run inside a git working tree."
+}
+
+function Show-RecentTags {
+    $recentTags = @(git tag --sort=-creatordate --format="%(refname:short)  %(creatordate:short)  %(subject)" | Select-Object -First 3)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git tag failed with exit code $LASTEXITCODE."
+    }
+
+    if ($recentTags.Count -eq 0) {
+        Write-Host "Recent tags: none"
+        return
+    }
+
+    Write-Host "Recent tags:"
+    foreach ($recentTag in $recentTags) {
+        Write-Host "  $recentTag"
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($Tag)) {
+    Show-RecentTags
     $Tag = Read-Host "Release tag (example: v1.0.0)"
 }
 
@@ -49,16 +72,11 @@ if ($Tag -notmatch '^v?\d+\.\d+\.\d+$') {
     throw "Invalid tag '$Tag'. Use v1.2.3 or 1.2.3."
 }
 
-$insideWorkTree = Get-GitOutput rev-parse --is-inside-work-tree
-if ($insideWorkTree -ne "true") {
-    throw "This script must be run inside a git working tree."
-}
-
-$remoteUrl = Get-GitOutput remote get-url $Remote
-$headSha = Get-GitOutput rev-parse HEAD
-$headShortSha = Get-GitOutput rev-parse --short HEAD
-$headSubject = Get-GitOutput log -1 --pretty=%s
-$status = Get-GitOutput status --short
+$remoteUrl = Get-GitOutput -Arguments @("remote", "get-url", $Remote)
+$headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD")
+$headShortSha = Get-GitOutput -Arguments @("rev-parse", "--short", "HEAD")
+$headSubject = Get-GitOutput -Arguments @("log", "-1", "--pretty=%s")
+$status = Get-GitOutput -Arguments @("status", "--short")
 
 Write-Host "Tag:     $Tag"
 Write-Host "Commit:  $headShortSha $headSubject"
@@ -83,7 +101,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Local tag '$Tag' already points to HEAD."
 }
 else {
-    Invoke-Git tag -a $Tag $headSha -m "Release $Tag"
+    Invoke-Git -Arguments @("tag", "-a", $Tag, $headSha, "-m", "Release $Tag")
     Write-Host "Created local annotated tag '$Tag'."
 }
 
@@ -98,5 +116,5 @@ if (-not $SkipRemoteTagCheck) {
     }
 }
 
-Invoke-Git push $Remote "refs/tags/$Tag"
+Invoke-Git -Arguments @("push", $Remote, "refs/tags/$Tag")
 Write-Host "Pushed '$Tag'. GitHub Actions will build and publish the MSI release."

@@ -80,6 +80,10 @@ jobs:
       - name: Check WiX Toolset
         run: wix --version
 
+      - name: Accept WiX Toolset EULA
+        shell: pwsh
+        run: wix eula accept wix7
+
       - name: Build MSI
         shell: pwsh
         run: |

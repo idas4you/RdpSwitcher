@@ -11,7 +11,9 @@ param(
 
     [string]$ProductName = "RdpSwitcher",
 
-    [string]$Manufacturer = "RdpSwitcher"
+    [string]$Manufacturer = "RdpSwitcher",
+
+    [string]$WixEulaId = "wix7"
 )
 
 $ErrorActionPreference = "Stop"
@@ -149,7 +151,12 @@ $componentRefXml    </Feature>
 Set-Content -LiteralPath $wxsPath -Value $wxs -Encoding UTF8
 
 try {
-    wix build $wxsPath -arch x64 -out $outputFullPath
+    if ([string]::IsNullOrWhiteSpace($WixEulaId)) {
+        wix build $wxsPath -arch x64 -out $outputFullPath
+    }
+    else {
+        wix build -acceptEula $WixEulaId $wxsPath -arch x64 -out $outputFullPath
+    }
 }
 finally {
     Remove-Item -LiteralPath $tempDirectory -Recurse -Force

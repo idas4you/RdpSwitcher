@@ -115,6 +115,8 @@ dotnet publish RdpSwitcher.csproj `
 
 릴리스 태그가 push되면 GitHub Actions가 MSI를 빌드하고 GitHub Release에 업로드합니다.
 
+릴리스 워크플로는 WiX Toolset v7을 사용하며 MSI 빌드 시 `-acceptEula wix7`을 전달합니다. 현재 사용 목적에서 WiX v7 OSMF EULA를 수락할 수 있는지 확인하세요.
+
 세 부분으로 된 숫자 태그를 사용합니다.
 
 ```powershell
@@ -128,6 +130,14 @@ dotnet publish RdpSwitcher.csproj `
 ```powershell
 ./build/Push-ReleaseTag.ps1 -Tag v1.0.0
 ```
+
+가장 최근 로컬 태그와 같은 이름의 원격 태그를 삭제하려면 다음 스크립트를 사용합니다.
+
+```powershell
+./build/Remove-LatestReleaseTag.ps1
+```
+
+확인 프롬프트를 건너뛰려면 `-Force`를 사용합니다.
 
 ## 라이선스
 

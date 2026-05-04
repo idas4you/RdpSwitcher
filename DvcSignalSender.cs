@@ -7,8 +7,8 @@ namespace RdpSwitcher;
 internal static class DvcSignalSender
 {
     private const int ErrorGenFailure = 31;
-    private const int MaxSendAttempts = 3;
-    private const int AckTimeoutMilliseconds = 4000;
+    private const int MaxSendAttempts = 1;
+    private const int AckTimeoutMilliseconds = 2000;
     private const int AckBufferBytes = 4096;
 
     private static readonly object SyncRoot = new();

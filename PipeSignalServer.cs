@@ -54,7 +54,8 @@ internal sealed class PipeSignalServer : IDisposable
                 var connectionId = Interlocked.Increment(ref _nextConnectionId);
                 AppLog.Write($"Named pipe client connected. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}");
 
-                _ = Task.Run(() => HandleClientAsync(pipe, connectionId, cancellationToken), CancellationToken.None);
+                var connectedPipe = pipe;
+                _ = Task.Run(() => HandleClientAsync(connectedPipe, connectionId, cancellationToken), CancellationToken.None);
                 pipe = null;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

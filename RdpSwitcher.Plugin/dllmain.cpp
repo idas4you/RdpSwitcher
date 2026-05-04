@@ -249,6 +249,19 @@ namespace
         return true;
     }
 
+    bool PreconnectHostPipe()
+    {
+        EnterCriticalSection(&g_pipeLock);
+        const bool connected = EnsureHostPipeNoLock();
+        LeaveCriticalSection(&g_pipeLock);
+
+        Trace(connected
+            ? L"host named pipe connected after DVC channel connection"
+            : L"host named pipe preconnect failed after DVC channel connection; will retry when DVC data arrives");
+
+        return connected;
+    }
+
     bool TryExtractNonce(const BYTE* buffer, ULONG size, char* nonce, size_t nonceSize)
     {
         if (buffer == nullptr || nonce == nullptr || nonceSize == 0)
@@ -531,6 +544,7 @@ namespace
             *accept = TRUE;
             *callback = channelCallback;
             Trace(L"new DVC channel accepted");
+            PreconnectHostPipe();
             return S_OK;
         }
 

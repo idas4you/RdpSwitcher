@@ -6,6 +6,7 @@ namespace RdpSwitcher;
 
 internal static class DvcSignalSender
 {
+    private const int ErrorGenFailure = 31;
     private const int MaxSendAttempts = 3;
     private const int AckTimeoutMilliseconds = 4000;
     private const int AckBufferBytes = 4096;
@@ -193,7 +194,13 @@ internal static class DvcSignalSender
     private static string FormatLastWin32Error(string message)
     {
         var errorCode = Marshal.GetLastWin32Error();
-        return $"{message}. Win32Error={errorCode}, Message={new Win32Exception(errorCode).Message}";
+        var formatted = $"{message}. Win32Error={errorCode}, Message={new Win32Exception(errorCode).Message}";
+        if (errorCode == ErrorGenFailure && string.Equals(message, "Could not open DVC channel", StringComparison.Ordinal))
+        {
+            formatted += "; LikelyCause=The host mstsc.exe plug-in did not create the RDPSWCH listener. Start RdpSwitcher on the host before opening RDP, confirm the RDC AddIn is enabled, then close and reopen the RDP window.";
+        }
+
+        return formatted;
     }
 
     private sealed record DvcPayload(string Nonce, byte[] Bytes);

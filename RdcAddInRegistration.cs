@@ -32,4 +32,12 @@ internal static class RdcAddInRegistration
             AppLog.Write($"Failed to disable RDC AddIn. Key={AddInRegistryPath}, Error={ex.Message}");
         }
     }
+
+    public static string GetDiagnostics()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey($@"{AddInsRegistryPath}\{PluginName}");
+        var registeredName = key?.GetValue("Name") as string;
+        var enabled = string.Equals(registeredName, PluginClsid, StringComparison.OrdinalIgnoreCase);
+        return $"Key={AddInRegistryPath}, Exists={key is not null}, Enabled={enabled}, Name={registeredName ?? "(missing)"}, ExpectedName={PluginClsid}";
+    }
 }

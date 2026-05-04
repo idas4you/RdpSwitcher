@@ -8,28 +8,23 @@ namespace RdpSwitcher;
 internal sealed class PipeSignalServer : IDisposable
 {
     private const int MaxPayloadBytes = 8192;
-    private const int ListenerCount = 4;
 
     private readonly CancellationTokenSource _cancellation = new();
     private readonly SynchronizationContext? _synchronizationContext = SynchronizationContext.Current;
-    private readonly List<Task> _listenTasks = [];
+    private Task? _listenTask;
+    private int _nextConnectionId;
     private bool _disposed;
 
     public event EventHandler<PipeSignalEventArgs>? SignalReceived;
 
     public void Start()
     {
-        if (_listenTasks.Count > 0)
+        if (_listenTask is not null)
         {
             return;
         }
 
-        AppLog.Write($"Named pipe server starting. Pipe={IpcEndpoint.PipeName}, Listeners={ListenerCount}");
-        for (var listenerIndex = 1; listenerIndex <= ListenerCount; listenerIndex++)
-        {
-            var capturedIndex = listenerIndex;
-            _listenTasks.Add(Task.Run(() => ListenAsync(capturedIndex, _cancellation.Token)));
-        }
+        _listenTask = Task.Run(() => ListenAsync(_cancellation.Token));
     }
 
     public void Dispose()
@@ -40,22 +35,55 @@ internal sealed class PipeSignalServer : IDisposable
         }
 
         _cancellation.Cancel();
-        WaitForListenersToStop();
+        WaitForListenerToStop();
         _cancellation.Dispose();
         _disposed = true;
     }
 
-    private async Task ListenAsync(int listenerIndex, CancellationToken cancellationToken)
+    private async Task ListenAsync(CancellationToken cancellationToken)
     {
+        AppLog.Write($"Named pipe server starting. Pipe={IpcEndpoint.PipeName}");
+
         while (!cancellationToken.IsCancellationRequested)
         {
+            NamedPipeServerStream? pipe = null;
             try
             {
-                await using var pipe = CreateServerStream();
+                pipe = CreateServerStream();
                 await pipe.WaitForConnectionAsync(cancellationToken);
-                pipe.ReadMode = PipeTransmissionMode.Message;
-                AppLog.Write($"Named pipe client connected. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
+                var connectionId = Interlocked.Increment(ref _nextConnectionId);
+                AppLog.Write($"Named pipe client connected. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}");
 
+                _ = Task.Run(() => HandleClientAsync(pipe, connectionId, cancellationToken), CancellationToken.None);
+                pipe = null;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write($"Named pipe server error. Pipe={IpcEndpoint.PipeName}, Error={ex}");
+                await DelayAfterErrorAsync(cancellationToken);
+            }
+            finally
+            {
+                pipe?.Dispose();
+            }
+        }
+
+        AppLog.Write($"Named pipe server stopped. Pipe={IpcEndpoint.PipeName}");
+    }
+
+    private async Task HandleClientAsync(
+        NamedPipeServerStream pipe,
+        int connectionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using (pipe)
+            {
                 while (pipe.IsConnected && !cancellationToken.IsCancellationRequested)
                 {
                     var payload = await ReadPayloadAsync(pipe, cancellationToken);
@@ -66,28 +94,26 @@ internal sealed class PipeSignalServer : IDisposable
 
                     if (!IsValidPayload(payload))
                     {
-                        AppLog.Write($"Rejected named pipe payload. Pipe={IpcEndpoint.PipeName}, Payload={payload.ReplaceLineEndings(" | ")}");
+                        AppLog.Write($"Rejected named pipe payload. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}, Payload={payload.ReplaceLineEndings(" | ")}");
                         continue;
                     }
 
-                    AppLog.Write($"Named pipe payload accepted. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}, Bytes={Encoding.UTF8.GetByteCount(payload)}");
+                    AppLog.Write($"Named pipe payload accepted. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}, Bytes={Encoding.UTF8.GetByteCount(payload)}");
                     PostSignal(payload);
                 }
-
-                AppLog.Write($"Named pipe client disconnected. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write($"Named pipe server error. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}, Error={ex}");
-                await DelayAfterErrorAsync(cancellationToken);
             }
         }
-
-        AppLog.Write($"Named pipe listener stopped. Pipe={IpcEndpoint.PipeName}, Listener={listenerIndex}");
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"Named pipe client error. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}, Error={ex}");
+        }
+        finally
+        {
+            AppLog.Write($"Named pipe client disconnected. Pipe={IpcEndpoint.PipeName}, Connection={connectionId}");
+        }
     }
 
     private static NamedPipeServerStream CreateServerStream()
@@ -95,8 +121,8 @@ internal sealed class PipeSignalServer : IDisposable
         return NamedPipeServerStreamAcl.Create(
             IpcEndpoint.PipeName,
             PipeDirection.In,
-            maxNumberOfServerInstances: ListenerCount,
-            PipeTransmissionMode.Message,
+            maxNumberOfServerInstances: NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
             inBufferSize: MaxPayloadBytes,
             outBufferSize: 0,
@@ -127,30 +153,45 @@ internal sealed class PipeSignalServer : IDisposable
 
     private static async Task<string?> ReadPayloadAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
     {
-        var buffer = new byte[1024];
-        using var memory = new MemoryStream();
-
-        while (memory.Length <= MaxPayloadBytes)
+        var lengthBuffer = new byte[sizeof(int)];
+        if (!await ReadExactAsync(stream, lengthBuffer, cancellationToken))
         {
-            var bytesRead = await stream.ReadAsync(buffer, cancellationToken);
+            return null;
+        }
+
+        var payloadLength = BitConverter.ToInt32(lengthBuffer, 0);
+        if (payloadLength <= 0 || payloadLength > MaxPayloadBytes)
+        {
+            throw new InvalidDataException($"Named pipe payload length is invalid. Length={payloadLength}, Max={MaxPayloadBytes}.");
+        }
+
+        var payloadBuffer = new byte[payloadLength];
+        if (!await ReadExactAsync(stream, payloadBuffer, cancellationToken))
+        {
+            return null;
+        }
+
+        return Encoding.UTF8.GetString(payloadBuffer);
+    }
+
+    private static async Task<bool> ReadExactAsync(
+        Stream stream,
+        byte[] buffer,
+        CancellationToken cancellationToken)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var bytesRead = await stream.ReadAsync(buffer.AsMemory(offset), cancellationToken);
             if (bytesRead == 0)
             {
-                return memory.Length == 0 ? null : Encoding.UTF8.GetString(memory.ToArray());
+                return false;
             }
 
-            memory.Write(buffer, 0, bytesRead);
-            if (stream.IsMessageComplete)
-            {
-                break;
-            }
+            offset += bytesRead;
         }
 
-        if (memory.Length > MaxPayloadBytes)
-        {
-            throw new InvalidDataException($"Named pipe payload exceeded {MaxPayloadBytes} bytes.");
-        }
-
-        return Encoding.UTF8.GetString(memory.ToArray());
+        return true;
     }
 
     private static bool IsValidPayload(string payload)
@@ -173,16 +214,16 @@ internal sealed class PipeSignalServer : IDisposable
         }
     }
 
-    private void WaitForListenersToStop()
+    private void WaitForListenerToStop()
     {
-        if (_listenTasks.Count == 0)
+        if (_listenTask is null)
         {
             return;
         }
 
         try
         {
-            Task.WaitAll(_listenTasks.ToArray(), TimeSpan.FromSeconds(1));
+            _listenTask.Wait(TimeSpan.FromSeconds(1));
         }
         catch
         {

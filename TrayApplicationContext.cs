@@ -25,6 +25,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
             if (!_isRemoteSession)
             {
+                AppLog.Write($"Host registration diagnostics before registration. {ComPluginRegistration.GetDiagnostics()}");
+                AppLog.Write($"Host plug-in load diagnostics before registration. {ComPluginRegistration.GetLoadDiagnostics()}");
+                AppLog.Write($"RDC AddIn diagnostics before registration. {RdcAddInRegistration.GetDiagnostics()}");
+
                 var registrationResult = ComPluginRegistration.EnsureRegisteredForCurrentUser();
                 AppLog.Write($"COM plug-in registration check. Result={registrationResult}, PluginPath={ComPluginRegistration.PluginPath}, Key={ComPluginRegistration.ComRegistryPath}");
                 if (registrationResult == ComPluginRegistrationResult.PluginDllMissing)
@@ -49,6 +53,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 {
                     RdcAddInRegistration.EnableForCurrentUser();
                 }
+
+                AppLog.Write($"Host registration diagnostics after registration. {ComPluginRegistration.GetDiagnostics()}");
+                AppLog.Write($"Host plug-in load diagnostics after registration. {ComPluginRegistration.GetLoadDiagnostics()}");
+                AppLog.Write($"RDC AddIn diagnostics after registration. {RdcAddInRegistration.GetDiagnostics()}");
 
                 _pipeSignalServer = new PipeSignalServer();
                 _pipeSignalServer.SignalReceived += OnPipeSignalReceived;
@@ -137,8 +145,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _notifyIcon.ShowBalloonTip(
             3000,
             "RdpSwitcher",
-            "Could not send DVC signal to host. Check the RDC plug-in and the log.",
+            GetDvcFailureBalloonMessage(error),
             ToolTipIcon.Warning);
+    }
+
+    private static string GetDvcFailureBalloonMessage(string? error)
+    {
+        if (error?.Contains("Win32Error=31", StringComparison.Ordinal) == true)
+        {
+            return "Host RDP plug-in is not ready. Start RdpSwitcher on the host, then close and reopen the RDP window.";
+        }
+
+        return "Could not send DVC signal to host. Check the RDC plug-in and the log.";
     }
 
     private void ToggleRdp(string reason)

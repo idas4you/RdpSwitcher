@@ -26,6 +26,7 @@ internal static class NativeMethods
     internal const int WTS_CURRENT_SESSION = -1;
     internal const int WTS_CLIENT_PROTOCOL_TYPE = 16;
     internal const int WTS_CHANNEL_OPTION_DYNAMIC = 0x00000001;
+    internal const int LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008;
 
     internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -157,6 +158,19 @@ internal static class NativeMethods
     internal static extern bool ProcessIdToSessionId(
         uint processId,
         out uint sessionId);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern IntPtr LoadLibraryEx(
+        string lpLibFileName,
+        IntPtr hFile,
+        int dwFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    internal static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool FreeLibrary(IntPtr hModule);
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -8,6 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>Assets\RdpSwitcher.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>false</PublishSelfContained>
     <PluginDllPath>artifacts\plugin\x64\$(Configuration)\RdpSwitcher.Plugin.dll</PluginDllPath>
   </PropertyGroup>
 

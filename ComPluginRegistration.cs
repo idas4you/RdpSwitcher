@@ -1,4 +1,6 @@
 using Microsoft.Win32;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 
 namespace RdpSwitcher;
 
@@ -18,11 +20,11 @@ internal static class ComPluginRegistration
 #if DEBUG
     // Debug builds allow COM registration outside Program Files so local
     // development and testing can run from the repository or publish folder.
-    private const bool RequireTrustedInstallLocation = false;
+    public const bool RequireTrustedInstallLocation = false;
 #else
     // When true, COM registration is allowed only from Program Files locations
     // to reduce the risk of mstsc.exe loading a DLL from a user-writable folder.
-    private const bool RequireTrustedInstallLocation = true;
+    public const bool RequireTrustedInstallLocation = true;
 #endif
 
     private const string ClassesClsidRegistryPath = @"Software\Classes\CLSID";
@@ -30,6 +32,49 @@ internal static class ComPluginRegistration
     public static string PluginPath => Path.Combine(AppContext.BaseDirectory, PluginFileName);
 
     public static string ComRegistryPath => $@"HKCU\{ClassesClsidRegistryPath}\{RdcAddInRegistration.PluginClsid}";
+
+    public static string GetDiagnostics()
+    {
+        var pluginExists = File.Exists(PluginPath);
+        var trustedInstallLocation = IsTrustedInstallLocation(AppContext.BaseDirectory);
+        using var key = Registry.CurrentUser.OpenSubKey($@"{ClassesClsidRegistryPath}\{RdcAddInRegistration.PluginClsid}\InprocServer32");
+        var registeredPath = key?.GetValue(null) as string;
+        var threadingModel = key?.GetValue("ThreadingModel") as string;
+        var registered = string.Equals(registeredPath, PluginPath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(threadingModel, ThreadingModel, StringComparison.OrdinalIgnoreCase);
+
+        return $"BaseDirectory={AppContext.BaseDirectory}, PluginExists={pluginExists}, PluginPath={PluginPath}, RequireTrustedInstallLocation={RequireTrustedInstallLocation}, TrustedInstallLocation={trustedInstallLocation}, Key={ComRegistryPath}, Registered={registered}, RegisteredPath={registeredPath ?? "(missing)"}, ThreadingModel={threadingModel ?? "(missing)"}";
+    }
+
+    public static string GetLoadDiagnostics()
+    {
+        if (!File.Exists(PluginPath))
+        {
+            return $"Loadable=False, Path={PluginPath}, Error=Plugin DLL is missing.";
+        }
+
+        var module = NativeMethods.LoadLibraryEx(
+            PluginPath,
+            IntPtr.Zero,
+            NativeMethods.LOAD_WITH_ALTERED_SEARCH_PATH);
+        if (module == IntPtr.Zero)
+        {
+            var errorCode = Marshal.GetLastWin32Error();
+            var message = new Win32Exception(errorCode).Message;
+            return $"Loadable=False, Path={PluginPath}, Win32Error={errorCode}, Message={message}, Hint=If this is a Debug plug-in on a machine without Visual Studio, rebuild the native plug-in with the release C runtime or use the Release plug-in.";
+        }
+
+        try
+        {
+            var hasDllGetClassObject = NativeMethods.GetProcAddress(module, "DllGetClassObject") != IntPtr.Zero;
+            var hasDllCanUnloadNow = NativeMethods.GetProcAddress(module, "DllCanUnloadNow") != IntPtr.Zero;
+            return $"Loadable=True, Path={PluginPath}, HasDllGetClassObject={hasDllGetClassObject}, HasDllCanUnloadNow={hasDllCanUnloadNow}";
+        }
+        finally
+        {
+            NativeMethods.FreeLibrary(module);
+        }
+    }
 
     public static ComPluginRegistrationResult EnsureRegisteredForCurrentUser()
     {

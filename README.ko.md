@@ -51,6 +51,8 @@ HKCU\Software\Classes\CLSID\{8A1E8AC0-827E-42F8-8B65-8D65C7A6AB7D}\InprocServer3
 
 ## 사용법
 
+RdpSwitcher 릴리스 빌드는 framework-dependent 방식입니다. 실행하기 전에 호스트 PC와 원격 Windows 세션 양쪽에 Microsoft .NET 8 Desktop Runtime x64를 설치해야 합니다.
+
 1. RdpSwitcher를 빌드하거나 설치해서 다음 두 파일이 같은 폴더에 있게 합니다.
 
 ```text
@@ -125,7 +127,7 @@ dotnet publish RdpSwitcher.csproj `
 ./build/Push-ReleaseTag.ps1
 ```
 
-워크플로는 self-contained `win-x64` 빌드를 만들고, `RdpSwitcher-v1.0.0-win-x64.msi`로 패키징한 뒤 해당 태그의 GitHub Release에 첨부합니다.
+워크플로는 framework-dependent `win-x64` 빌드를 만들고, `RdpSwitcher-v1.0.0-win-x64.msi`로 패키징한 뒤 해당 태그의 GitHub Release에 첨부합니다. MSI에는 .NET Desktop Runtime이 포함되지 않습니다.
 
 태그를 직접 넘길 수도 있습니다.
 

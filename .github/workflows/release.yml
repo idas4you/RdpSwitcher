@@ -60,10 +60,9 @@ jobs:
           dotnet publish $env:PROJECT_PATH `
             -c Release `
             -r win-x64 `
-            --self-contained true `
+            --self-contained false `
             -o $env:PUBLISH_DIR `
             /p:PublishSingleFile=true `
-            /p:EnableCompressionInSingleFile=true `
             /p:DebugType=none `
             /p:DebugSymbols=false `
             /p:Version=$env:RELEASE_VERSION `

@@ -47,6 +47,8 @@ The current registration decision is written to `%LOCALAPPDATA%\RdpSwitcher\RdpS
 
 ## Usage
 
+RdpSwitcher release builds are framework-dependent. Install the Microsoft .NET 8 Desktop Runtime x64 on both the host PC and the remote Windows session before running RdpSwitcher.
+
 1. Build or install RdpSwitcher so these files are in the same folder:
 
 ```text
@@ -121,7 +123,7 @@ Use a three-part numeric tag:
 ./build/Push-ReleaseTag.ps1
 ```
 
-The workflow publishes a self-contained `win-x64` build, packages it as `RdpSwitcher-v1.0.0-win-x64.msi`, and attaches it to the GitHub Release for that tag.
+The workflow publishes a framework-dependent `win-x64` build, packages it as `RdpSwitcher-v1.0.0-win-x64.msi`, and attaches it to the GitHub Release for that tag. The MSI does not bundle the .NET Desktop Runtime.
 
 You can also pass the tag directly:
 

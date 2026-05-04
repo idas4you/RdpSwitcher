@@ -196,9 +196,24 @@ namespace
             return false;
         }
 
-        DWORD written = 0;
-        const BOOL ok = WriteFile(g_pipe, buffer, size, &written, nullptr);
+        if (size > 8192)
+        {
+            Trace(L"DVC payload is too large for host named pipe frame");
+            return false;
+        }
 
+        const DWORD payloadSize = static_cast<DWORD>(size);
+        DWORD written = 0;
+        BOOL ok = WriteFile(g_pipe, &payloadSize, sizeof(payloadSize), &written, nullptr);
+        if (!ok || written != sizeof(payloadSize))
+        {
+            TraceWin32(L"failed to write DVC payload length to host named pipe", GetLastError());
+            CloseHostPipeNoLock();
+            return false;
+        }
+
+        written = 0;
+        ok = WriteFile(g_pipe, buffer, size, &written, nullptr);
         if (!ok || written != size)
         {
             TraceWin32(L"failed to write DVC payload to host named pipe", GetLastError());
